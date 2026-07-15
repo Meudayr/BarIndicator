@@ -1,4 +1,4 @@
-## X-Curse-Project-ID: 0
+## X-Curse-Project-ID: 1610840
 ## Interface: 120007
 ## Title: BarIndicator
 ## Notes: Sleek visual indicator for the active main action bar page. Hides the default main bar in combat.
