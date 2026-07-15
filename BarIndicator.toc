@@ -3,7 +3,7 @@
 ## Title: BarIndicator
 ## Notes: Sleek visual indicator for the active main action bar page. Hides the default main bar in combat.
 ## Author: Antigravity
-## Version: 1.0.0
+## Version: 1.0.1
 ## SavedVariables: BarIndicatorDB
 
 BarIndicator.lua
