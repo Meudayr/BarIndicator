@@ -8,7 +8,7 @@ local addonName, addonTable = ...
 local optionsFrame, retailCategory, editDialog
 local RefreshFrameStyles, UpdateIndicatorVisibility, UpdateMainBarCombatHiding, UpdateIndicator
 local RestoreFramePosition, SetFrameScale
-local alertFrame, alertOverlayAlert
+local alertFrame, alertOverlayAlert, isEditModeActive
 local RestoreAlertPosition, SetAlertScale, RefreshAlertStyles, UpdateAlertVisibility
 
 -- Helper to deep-copy tables for defaults
@@ -275,15 +275,15 @@ end
 -- Update alert visibility securely
 function UpdateAlertVisibility()
     if not alertFrame then return end
-    
-    UnregisterStateDriver(alertFrame, "visibility")
+    if InCombatLockdown() then return end
     
     if not BarIndicatorDB.alert.enabled then
+        UnregisterStateDriver(alertFrame, "visibility")
         alertFrame:Hide()
         return
     end
     
-    if EditModeManagerFrame and EditModeManagerFrame:IsShown() then
+    if isEditModeActive or (EditModeManagerFrame and EditModeManagerFrame:IsShown()) then
         alertFrame:Show()
         return
     end
@@ -878,6 +878,9 @@ function UpdateMainBarCombatHiding()
     if not MainMenuBar then
         return
     end
+    if InCombatLockdown() then
+        return
+    end
 
     if BarIndicatorDB.hideMainBarInCombat then
         -- Register a secure state driver to hide MainMenuBar in combat and show out of combat
@@ -885,16 +888,19 @@ function UpdateMainBarCombatHiding()
     else
         -- Remove driver and restore visibility
         UnregisterStateDriver(MainMenuBar, "visibility")
-        if not InCombatLockdown() then
-            MainMenuBar:Show()
-        end
+        MainMenuBar:Show()
     end
 end
 
 -- Secure State Driver for indicator frame visibility in/out of combat
 function UpdateIndicatorVisibility()
-    UnregisterStateDriver(frame, "visibility")
+    if InCombatLockdown() then return end
     
+    if isEditModeActive or (EditModeManagerFrame and EditModeManagerFrame:IsShown()) then
+        frame:Show()
+        return
+    end
+
     local inCombat = BarIndicatorDB.showIndicatorInCombat
     local outCombat = BarIndicatorDB.showIndicatorOutCombat
     
@@ -950,6 +956,7 @@ eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("ACTIONBAR_PAGE_CHANGED")
 eventFrame:RegisterEvent("UPDATE_BONUS_ACTIONBAR")
+eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 
 eventFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
@@ -996,6 +1003,12 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
     elseif event == "ACTIONBAR_PAGE_CHANGED" or event == "UPDATE_BONUS_ACTIONBAR" then
         UpdateIndicator()
         -- Also trigger update on action bar page change just in case (though secure driver handles visibility)
+
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        UpdateIndicatorVisibility()
+        UpdateMainBarCombatHiding()
+        UpdateIndicator()
+        UpdateAlertVisibility()
     end
 end)
 
@@ -1530,14 +1543,13 @@ end
 ----------------------------------------------------
 
 local function OnEditModeEnter()
-    C_Timer.After(0, function()
-        UnregisterStateDriver(frame, "visibility")
-        frame:Show()
-        if alertFrame then
-            UnregisterStateDriver(alertFrame, "visibility")
-            alertFrame:Show()
-        end
-    end)
+    if isEditModeActive then return end
+    isEditModeActive = true
+
+    frame:Show()
+    if alertFrame then
+        alertFrame:Show()
+    end
     editOverlay:Show()
     if alertOverlayAlert then
         alertOverlayAlert:Show()
@@ -1545,6 +1557,9 @@ local function OnEditModeEnter()
 end
 
 local function OnEditModeExit()
+    if not isEditModeActive then return end
+    isEditModeActive = false
+
     editOverlay:Hide()
     if alertOverlayAlert then
         alertOverlayAlert:Hide()
@@ -1552,17 +1567,20 @@ local function OnEditModeExit()
     if editDialog then
         editDialog:Hide()
     end
-    C_Timer.After(0, function()
+    if not InCombatLockdown() then
         UpdateIndicatorVisibility()
         UpdateAlertVisibility()
-    end)
+    end
 end
 
-if EditModeManagerFrame then
+if EventRegistry and EventRegistry.RegisterCallback then
+    EventRegistry:RegisterCallback("EditMode.Enter", OnEditModeEnter, addonName)
+    EventRegistry:RegisterCallback("EditMode.Exit", OnEditModeExit, addonName)
+elseif EditModeManagerFrame then
     EditModeManagerFrame:HookScript("OnShow", OnEditModeEnter)
     EditModeManagerFrame:HookScript("OnHide", OnEditModeExit)
-    
-    if EditModeManagerFrame:IsShown() then
-        OnEditModeEnter()
-    end
+end
+
+if EditModeManagerFrame and EditModeManagerFrame:IsShown() then
+    OnEditModeEnter()
 end
